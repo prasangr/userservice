@@ -1,5 +1,8 @@
 package org.example.userservice.services;
 
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.MacAlgorithm;
 import lombok.Setter;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.example.userservice.dtos.UserDto;
@@ -11,11 +14,13 @@ import org.example.userservice.repositories.UserRepository;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.util.MultiValueMap;
 import org.springframework.util.MultiValueMapAdapter;
-import org.springframework.web.bind.annotation.PostMapping;
 
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -24,10 +29,12 @@ import java.util.Optional;
 public class AuthService {
     private UserRepository userRepository;
     private SessionRepository sessionRepository;
+    private BCryptPasswordEncoder bCryptPasswordEncoder;
 
-    public AuthService(UserRepository userRepository, SessionRepository sessionRepository) {
+    public AuthService(UserRepository userRepository, SessionRepository sessionRepository, BCryptPasswordEncoder bCryptPasswordEncoder) {
         this.userRepository = userRepository;
         this.sessionRepository = sessionRepository;
+        this.bCryptPasswordEncoder = bCryptPasswordEncoder;
     }
 
     public ResponseEntity<UserDto> login(String email, String password) {
@@ -38,12 +45,34 @@ public class AuthService {
         }
 
         User user = userOptional.get();
-
-        if (!user.getPassword().equals(password)) {
+;
+        if (!bCryptPasswordEncoder.matches(password, user.getPassword())) {
             return null;
         }
+//        String message = "{\n" +
+//        "   \"email\": \"naman@scaler.com\",\n" +
+//        "   \"roles\": [\n" +
+//        "      \"mentor\",\n" +
+//        "      \"ta\"\n" +
+//        "   ],\n" +
+//        "   \"expirationDate\": \"23rdOctober2023\"\n" +
+//        "}";
+    //    byte[] content = message.getBytes(StandardCharsets.UTF_8);
+        Map<String, Object> jsonForJwt = new HashMap<>();
+        jsonForJwt.put("email", user.getEmail());
+        jsonForJwt.put("roles", user.getRoles());
+        jsonForJwt.put("expirationDate", new Date());
+        jsonForJwt.put("createdAt" , new Date());
 
-        String token = RandomStringUtils.randomAlphanumeric(30);
+
+        MacAlgorithm macAlgorithm = Jwts.SIG.HS256;
+        SecretKey key=macAlgorithm.key().build();
+        String token=Jwts.builder().claims(jsonForJwt).signWith(key,macAlgorithm).compact();
+
+
+
+       // String token = RandomStringUtils.randomAlphanumeric(30);
+
 
         Session session = new Session();
         session.setSessionStatus(SessionStatus.ACTIVE);
@@ -51,14 +80,13 @@ public class AuthService {
         session.setUser(user);
         sessionRepository.save(session);
 
-        UserDto userDto = new UserDto();
+        UserDto userDto = User.from(user);
 
 //        Map<String, String> headers = new HashMap<>();
 //        headers.put(HttpHeaders.SET_COOKIE, token);
 
         MultiValueMapAdapter<String, String> headers = new MultiValueMapAdapter<>(new HashMap<>());
         headers.add(HttpHeaders.SET_COOKIE, "auth-token:" + token);
-
 
 
         ResponseEntity<UserDto> response = new ResponseEntity<>(userDto, headers, HttpStatus.OK);
@@ -86,7 +114,7 @@ public class AuthService {
     public UserDto signUp(String email, String password) {
         User user = new User();
         user.setEmail(email);
-        user.setPassword(password);
+        user.setPassword(bCryptPasswordEncoder.encode(password));
 
         User savedUser = userRepository.save(user);
 
@@ -99,6 +127,11 @@ public class AuthService {
         if (sessionOptional.isEmpty()) {
             return null;
         }
+        MacAlgorithm macAlgorithm = Jwts.SIG.HS256;
+        SecretKey key=macAlgorithm.key().build();
+        Claims claims=     Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+
+
 
         return SessionStatus.ACTIVE;
     }

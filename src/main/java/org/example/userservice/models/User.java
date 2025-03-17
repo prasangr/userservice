@@ -3,6 +3,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.ManyToMany;
 import lombok.Getter;
 import lombok.Setter;
+import org.example.userservice.dtos.UserDto;
 
 import java.util.HashSet;
 import java.util.List;
@@ -10,8 +11,17 @@ import java.util.Set;
 
 @Entity
 
+
 public class User extends BaseModel {
     private String email;
+
+    public static UserDto from(User user) {
+        UserDto userDto = new UserDto();
+        userDto.setEmail(user.getEmail());
+        userDto.setRoles(user.getRoles());
+
+        return userDto;
+    }
 
     public String getEmail() {
         return email;
